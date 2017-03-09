@@ -38,11 +38,7 @@ public abstract class Store {
             }
             switch (threadMode){
                 case ASYNC:
-                    if(Thread.currentThread().getName().equals("main")){
-
-                    }else{
-                        action.done(action.type,result);
-                    }
+                    action.done(action.type,result);
                     break;
                 default:
                     handler.post(new Runnable() {
