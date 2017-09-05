@@ -1,21 +1,32 @@
 package chanson.androidflux;
 
+import android.app.Activity;
 import android.os.Bundle;
 import android.os.Handler;
+import android.util.SparseArray;
 
-import org.greenrobot.eventbus.Subscribe;
-import org.greenrobot.eventbus.ThreadMode;
+
+import org.json.JSONObject;
+
+import java.lang.annotation.Annotation;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.HashMap;
 
 
 /**
  * Created by Chanson on 17/3/9.
  */
-public abstract class Store {
+public abstract class Store{
 
     public Handler handler;
+    private StoreDependencyDelegate delegate;
+    private SparseArray<Method> methodSparseArray;
 
-    public Store(){
-        Dispatcher.regiter(this);
+    public Store(StoreDependencyDelegate delegate){
+        this.delegate = delegate;
+        methodSparseArray = new SparseArray<>();
+        this.delegate.storeActionBindedMethod(methodSparseArray);
         if(Thread.currentThread().getName().equals("main")) {
             handler = new Handler();
         }else{
@@ -23,39 +34,36 @@ public abstract class Store {
         }
     }
 
-    @Subscribe(threadMode=ThreadMode.ASYNC)
     public void doAction(final Action action){
         if(action != null && action.type > -1) {
-            final Bundle result = doAction(action.type, action.data);
-            ThreadMode threadMode = ThreadMode.MAIN;
-            try {
-                threadMode = action.getClass()
-                        .getDeclaredMethod("done",Integer.class,Bundle.class)
-                        .getAnnotation(chanson.androidflux.ThreadMode.class)
-                        .value();
-            } catch (NoSuchMethodException e) {
-                e.printStackTrace();
-            }
-            switch (threadMode){
-                case ASYNC:
-                    action.done(action.type,result);
-                    break;
-                default:
+            doAction(action.type, action, new StoreResultCallBack() {
+                @Override
+                public void onResult(final int type, final JSONObject data) {
                     handler.post(new Runnable() {
                         @Override
                         public void run() {
-                            action.done(action.type,result);
+                            try {
+                                methodSparseArray.get(type).invoke(delegate.getDependency(),data);
+                            } catch (IllegalAccessException e) {
+                                e.printStackTrace();
+                            } catch (InvocationTargetException e) {
+                                e.printStackTrace();
+                            }
                         }
                     });
-                    break;
-            }
+                }
+            });
+
         }
     }
 
-    public abstract Bundle doAction(int type,Bundle data);
+    public abstract void doAction(int type,HashMap<String,Object> data,StoreResultCallBack callBack);
 
     public void destroy(){
         this.handler = null;
-        Dispatcher.unregister(this);
+    }
+
+    public interface StoreResultCallBack{
+        public void onResult(int type,JSONObject data);
     }
 }
